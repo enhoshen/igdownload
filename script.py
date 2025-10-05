@@ -49,6 +49,7 @@ if __name__ == "__main__":
 
     error_url = []
     L.dirname_pattern = f"{args.output}/{{target}}"
+    L.filename_pattern = f"{{target}}-{{date_utc}}"
     if args.url:
         post_shortcode = re.search(r"/p/(.*)/?", args.url)
         if post_shortcode is not None:
