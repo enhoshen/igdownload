@@ -62,9 +62,11 @@ if __name__ == "__main__":
             except Exception as e:
                 logger.error(f"Error downloading from {args.url}: {e}")
                 error_url.append(args.url)
+                with open("error.txt", "a+") as error:
+                    error.write(args.url + "\n")
     if args.input:
-        with open(args.input, "r") as f:
-            for url in f:
+        with open(args.input, "r") as inpt, open("error.txt", "a+") as error:
+            for url in inpt:
                 url = url.strip()  # Remove leading/trailing whitespace
                 post_shortcode = re.search(r"/p/(.*)/", url)
                 if post_shortcode is not None:
@@ -77,6 +79,5 @@ if __name__ == "__main__":
                     except Exception as e:
                         logger.error(f"Error downloading from {url}: {e}")
                         error_url.append(url)
-    with open("error.txt", "a+") as file:
-        for i in error_url:
-            file.write(i + "\n")
+                        error.write(url + "\n")
+                        error.flush()
