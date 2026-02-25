@@ -68,7 +68,7 @@ if __name__ == "__main__":
     # collection operations
     parser.add_argument(
         "--download_links",
-        default="links.txt",
+        default=None,
         help="Download media links to a file",
     )
     parser.add_argument(
@@ -88,7 +88,23 @@ if __name__ == "__main__":
     client = None
     if args.login:
         client = instagrapi.Client()
-        client.login_by_sessionid(args.login)
+        client.set_user_agent(
+            "Instagram 410.0.0.0.96 Android (33/13; 480dpi; 1080x2400; xiaomi; M2007J20CG; surya; qcom; en_US; 641123490)"
+        )
+        try:
+            client.login_by_sessionid(args.login)
+        except:
+            try:
+                sessionid = input("sessionid:")
+                client.login_by_sessionid(sessionid=sessionid)
+            except:
+                name = input("username:")
+                passwd = input("password:")
+                vcode = input("verification code:")
+                client.login(
+                    username=name, password=passwd, verification_code=vcode
+                )
+        client.delay_range = [1, 3]
 
     if args.url:
         post_shortcode = re.search(r"/p/(.*)/?", args.url)
@@ -117,13 +133,18 @@ if __name__ == "__main__":
         collection_pk = client.collection_pk_by_name(args.collection)
 
     if args.download_links:
-        medias = client.collection_medias_by_name(args.collection)
-        with open(args.download_links, "w") as links, open(
+        collection_pk = client.collection_pk_by_name(args.collection)
+        medias = client.collection_medias(collection_pk=collection_pk, amount=0)
+        with open(args.download_links, "a+") as links, open(
             "error.txt", "a+"
         ) as error:
             for m in medias:
-                links.write(f"https://www.instagram.com/p/{m.code}/\n")
+                url = f"https://www.instagram.com/p/{m.code}/\n"
+                links.write(url)
                 if args.unsave:
-                    client.media_unsave(
-                        media_id=m.id, collection_pk=collection_pk
-                    )
+                    try:
+                        client.media_unsave(
+                            media_id=m.id, collection_pk=collection_pk
+                        )
+                    except ValueError:
+                        error.write(url)

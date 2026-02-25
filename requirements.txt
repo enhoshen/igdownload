@@ -1,2 +1,3 @@
 instaloader==4.14.2
 instagrapi
+#git+https://github.com/subzeroid/instagrapi@2293c60
