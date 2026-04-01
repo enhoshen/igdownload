@@ -2,7 +2,8 @@ import argparse
 import os
 import re
 from instagrapi.types import Media
-import instaloader
+
+# import instaloader
 import logging
 import instagrapi
 from enum import Enum
@@ -10,7 +11,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-L = instaloader.Instaloader()
+# L = instaloader.Instaloader()
 
 # L.login(USER, PASSWORD)  # (login)
 # L.interactive_login(USER)  # (ask password on terminal)
@@ -134,8 +135,8 @@ if __name__ == "__main__":
     logger.setLevel(args.log_level)
 
     error_url = []
-    L.dirname_pattern = f"{args.output}/{{target}}"
-    L.filename_pattern = f"{{target}}-{{date_utc}}"
+    # L.dirname_pattern = f"{args.output}/{{target}}"
+    # L.filename_pattern = f"{{target}}-{{date_utc}}"
 
     client = None
     if args.login:
