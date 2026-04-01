@@ -1,9 +1,12 @@
 import argparse
 import os
 import re
+from instagrapi.types import Media
 import instaloader
 import logging
 import instagrapi
+from enum import Enum
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -15,14 +18,58 @@ L = instaloader.Instaloader()
 #  `instaloader -l USERNAME`)
 
 
-def parse_url(url: str, loader: instaloader.Instaloader):
+class MediaType(Enum):
+    PHOTO = 1
+    VIDEO = 2
+
+
+def parse_story(url: str, client: instagrapi.Client, folder: str):
+    pk = client.story_pk_from_url(url)
+    info = client.story_info(story_pk=pk)
+    filename = f"{info.user.username}-{pk}"
+    try:
+        client.story_download(story_pk=pk, filename=filename, folder=folder)
+    except Exception as e:
+        logger.error(f"Error downloading from {url}: {e}")
+
+
+def parse_url(url: str, client: instagrapi.Client, folder: str):
     url = url.strip()  # Remove leading/trailing whitespace
-    post_shortcode = re.search(r"/p/(.*)/", url)
-    if post_shortcode is not None:
+    code_match = re.search(r"/p/(.*)/", url)
+    if code_match is not None:
         try:
-            post = instaloader.Post.from_shortcode(L.context, post_shortcode[1])
-            L.download_post(post, target=post_shortcode[1])
-            logger.info(f"Downloaded successfully from {url}")
+            # post = instaloader.Post.from_shortcode(L.context, post_shortcode[1])
+            # L.download_post(post, target=post_shortcode[1])
+            # logger.info(f"Downloaded successfully from {url}")
+            code = code_match[1]
+            folder = str(Path(folder).joinpath(code))
+            os.mkdir(path=folder)
+            pk = client.media_pk_from_code(code=code)
+            media = client.media_info(media_pk=pk)
+            filename = f"{media.user.username}-{code}-{media.pk}"
+            if media.media_type == MediaType.VIDEO.value:
+                client.video_download_by_url(media.video_url, filename, folder)
+                return
+            if media.media_type == MediaType.PHOTO.value:
+                client.photo_download_by_url(
+                    media.thumbnail_url, filename, folder
+                )
+                return
+            for resource in media.resources:
+                filename = f"{media.user.username}-{code}-{resource.pk}"
+                if resource.media_type == MediaType.PHOTO.value:
+                    client.photo_download_by_url(
+                        resource.thumbnail_url, filename, folder
+                    )
+                elif resource.media_type == MediaType.VIDEO.value:
+                    client.video_download_by_url(
+                        resource.video_url, filename, folder
+                    )
+                else:
+                    raise AlbumNotDownload(
+                        'Media type "{resource.media_type}" unknown for album (resource={resource.pk})'
+                    )
+
         except Exception as e:
             logger.error(f"Error downloading from {url}: {e}")
             error_url.append(url)
@@ -37,6 +84,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--url",
         help="The Instagram URL to download from.",
+    )
+    parser.add_argument(
+        "-s",
+        "--story",
+        help="Story link",
     )
     parser.add_argument(
         "-i",
@@ -106,28 +158,20 @@ if __name__ == "__main__":
                 )
         client.delay_range = [1, 3]
 
-    if args.url:
-        post_shortcode = re.search(r"/p/(.*)/?", args.url)
-        if post_shortcode is not None:
-            try:
-                post = instaloader.Post.from_shortcode(
-                    L.context, post_shortcode[1]
-                )
-                logger.info("Downloaded successfully.")
-                L.download_post(post, target=post_shortcode[1])
-            except Exception as e:
-                logger.error(f"Error downloading from {args.url}: {e}")
-                error_url.append(args.url)
-                with open("error.txt", "a+") as error:
-                    error.write(args.url + "\n")
-    if args.input:
-        with open(args.input, "r") as inpt, open("error.txt", "a+") as error:
-            for url in inpt:
-                parse_url(url=url, loader=L)
-
     # login required
     if client is None:
         exit(0)
+
+    if args.url:
+        parse_url(url=args.url, client=client, folder=args.output)
+
+    if args.story:
+        parse_story(url=args.story, client=client, folder=args.output)
+
+    if args.input:
+        with open(args.input, "r") as inpt, open("error.txt", "a+") as error:
+            for url in inpt:
+                parse_url(url=url, client=client, folder=args.output)
 
     if args.collection:
         collection_pk = client.collection_pk_by_name(args.collection)
