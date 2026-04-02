@@ -3,7 +3,7 @@ import os
 import re
 from instagrapi.types import Media
 
-# import instaloader
+import instaloader
 import logging
 import instagrapi
 from enum import Enum
@@ -11,7 +11,8 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# L = instaloader.Instaloader()
+# instaloader for no login downloads
+L = instaloader.Instaloader()
 
 # L.login(USER, PASSWORD)  # (login)
 # L.interactive_login(USER)  # (ask password on terminal)
@@ -34,17 +35,18 @@ def parse_story(url: str, client: instagrapi.Client, folder: str):
         logger.error(f"Error downloading from {url}: {e}")
 
 
-def parse_url(url: str, client: instagrapi.Client, folder: str):
+def parse_url(
+    url: str, client: instagrapi.Client, folder: str, sub_folder: bool = False
+):
+    error_url = []
     url = url.strip()  # Remove leading/trailing whitespace
     code_match = re.search(r"/p/(.*)/", url)
     if code_match is not None:
+        code = code_match[1]
         try:
-            # post = instaloader.Post.from_shortcode(L.context, post_shortcode[1])
-            # L.download_post(post, target=post_shortcode[1])
-            # logger.info(f"Downloaded successfully from {url}")
-            code = code_match[1]
-            folder = str(Path(folder).joinpath(code))
-            os.mkdir(path=folder)
+            if sub_folder:
+                folder = str(Path(folder).joinpath(code))
+                os.makedirs(name=folder, exist_ok=True)
             pk = client.media_pk_from_code(code=code)
             media = client.media_info(media_pk=pk)
             filename = f"{media.user.username}-{code}-{media.pk}"
@@ -70,6 +72,12 @@ def parse_url(url: str, client: instagrapi.Client, folder: str):
                     raise AlbumNotDownload(
                         'Media type "{resource.media_type}" unknown for album (resource={resource.pk})'
                     )
+        except instagrapi.exceptions.LoginRequired:
+            post = instaloader.Post.from_shortcode(
+                context=L.context, shortcode=code
+            )
+            L.download_post(post=post, target=code)
+            logger.info(f"Downloaded successfully from {url}")
 
         except Exception as e:
             logger.error(f"Error downloading from {url}: {e}")
@@ -110,7 +118,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "-c",
         "--collection",
-        default="download",
+        default=None,
         help="The collection to download links",
     )
     parser.add_argument(
@@ -134,16 +142,15 @@ if __name__ == "__main__":
     args = parser.parse_args()
     logger.setLevel(args.log_level)
 
-    error_url = []
     # L.dirname_pattern = f"{args.output}/{{target}}"
-    # L.filename_pattern = f"{{target}}-{{date_utc}}"
+    L.dirname_pattern = f"{args.output}"
+    L.filename_pattern = f"{{profile}}-{{target}}-{{mediaid}}"
 
-    client = None
+    client = instagrapi.Client()
+    client.set_user_agent(
+        "Instagram 410.0.0.0.96 Android (33/13; 480dpi; 1080x2400; xiaomi; M2007J20CG; surya; qcom; en_US; 641123490)"
+    )
     if args.login:
-        client = instagrapi.Client()
-        client.set_user_agent(
-            "Instagram 410.0.0.0.96 Android (33/13; 480dpi; 1080x2400; xiaomi; M2007J20CG; surya; qcom; en_US; 641123490)"
-        )
         try:
             client.login_by_sessionid(args.login)
         except:
@@ -159,9 +166,8 @@ if __name__ == "__main__":
                 )
         client.delay_range = [1, 3]
 
-    # login required
-    if client is None:
-        exit(0)
+    if args.collection:
+        collection_pk = client.collection_pk_by_name(args.collection)
 
     if args.url:
         parse_url(url=args.url, client=client, folder=args.output)
@@ -169,27 +175,26 @@ if __name__ == "__main__":
     if args.story:
         parse_story(url=args.story, client=client, folder=args.output)
 
-    if args.input:
-        with open(args.input, "r") as inpt, open("error.txt", "a+") as error:
-            for url in inpt:
-                parse_url(url=url, client=client, folder=args.output)
+    with open("error.txt", "a+") as error:
+        if args.input:
+            with open(args.input, "r") as inpt:
+                for url in inpt:
+                    parse_url(url=url, client=client, folder=args.output)
 
-    if args.collection:
-        collection_pk = client.collection_pk_by_name(args.collection)
-
-    if args.download_links:
-        collection_pk = client.collection_pk_by_name(args.collection)
-        medias = client.collection_medias(collection_pk=collection_pk, amount=0)
-        with open(args.download_links, "a+") as links, open(
-            "error.txt", "a+"
-        ) as error:
-            for m in medias:
-                url = f"https://www.instagram.com/p/{m.code}/\n"
-                links.write(url)
-                if args.unsave:
-                    try:
-                        client.media_unsave(
-                            media_id=m.id, collection_pk=collection_pk
-                        )
-                    except ValueError:
-                        error.write(url)
+        if args.download_links:
+            assert args.collection
+            collection_pk = client.collection_pk_by_name(args.collection)
+            medias = client.collection_medias(
+                collection_pk=collection_pk, amount=0
+            )
+            with open(args.download_links, "a+") as links:
+                for m in medias:
+                    url = f"https://www.instagram.com/p/{m.code}/\n"
+                    links.write(url)
+                    if args.unsave:
+                        try:
+                            client.media_unsave(
+                                media_id=m.id, collection_pk=collection_pk
+                            )
+                        except ValueError:
+                            error.write(url)
