@@ -87,7 +87,7 @@ def parse_url(
     folder: str,
     error_file,
     sub_folder: bool = False,
-):
+) -> bool:
     """Parses a URL and downloads the corresponding Instagram media."""
     url = url.strip()  # Remove leading/trailing whitespace
     code_match = re.search(r"/p/(.*)/", url)
@@ -124,6 +124,7 @@ def parse_url(
                 logger.warning(error_message)
                 error_file.write(f"Unsupported Media: {error_message}")
                 error_file.flush()
+                return True
 
         except instagrapi.exceptions.LoginRequired:
             logger.warning(
@@ -142,6 +143,7 @@ def parse_url(
                 logger.error(error_message)
                 error_file.write(f"Instaloader Fallback Error: {error_message}")
                 error_file.flush()
+                return True
 
         except Exception as e:
             # Catch-all for other exceptions during instagrapi processing
@@ -149,6 +151,10 @@ def parse_url(
             logger.error(error_message)
             error_file.write(f"General Error: {error_message}")
             error_file.flush()
+            return True
+        return False
+    logger.error(f"not a post with url: {url}")
+    return True
 
 
 if __name__ == "__main__":

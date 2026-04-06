@@ -1,3 +1,4 @@
 instaloader==4.14.2
 instagrapi
+Flask==2.3.2
 #git+https://github.com/subzeroid/instagrapi@2293c60

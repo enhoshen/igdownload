@@ -1,8 +1,9 @@
 ## examples
 
+Command line:
+
 ```shell
 # SESION_ID is the instagram authentication session id
-
 # read from input.txt, each line is a instagram post url and download medias to ./download/
 python script.py -l $SESSION_ID -i input.txt -o ./download/
 # download story from url to ./download/
@@ -13,6 +14,14 @@ python -i script.py -l $SESSION_ID -s <story url> -o ./download/
 python -i script.py -l $SESION_ID -c "download" --download_links "links.txt" --unsave
 ```
 
+Run GUI:
+
+```shell
+# default at 127.0.0.1:5000
+python app.py
+```
+
 ## requirements
 
 - `instagrapi`
+- `Flask`
