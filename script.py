@@ -157,7 +157,7 @@ def parse_url(
     return True
 
 
-if __name__ == "__main__":
+def create_parser():
     parser = argparse.ArgumentParser(
         description="Download Instagram images/videos."
     )
@@ -210,6 +210,11 @@ if __name__ == "__main__":
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
         help="Set the logging level",
     )
+    return parser
+
+
+if __name__ == "__main__":
+    parser = create_parser()
     args = parser.parse_args()
     logger.setLevel(args.log_level)
 

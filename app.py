@@ -4,6 +4,7 @@ import shlex
 import subprocess
 import sys
 import logging
+import script
 
 app = Flask(__name__)
 logger = logging.getLogger(__name__)
@@ -16,62 +17,23 @@ COMMAND_TO_RUN = ["python3", "script.py"]
 
 # Define the arguments that script.py's argparse parser will accept.
 # This structure will be used to dynamically generate input fields.
+parser = script.create_parser()
+arg_type_map = {
+    argparse._StoreAction: "text",
+    argparse._StoreTrueAction: "checkbox",
+}
 SCRIPT_ARGUMENTS = [
     {
-        "name": "--url",
-        "label": "Instagram URL",
-        "type": "text",
-        "placeholder": "e.g., https://www.instagram.com/p/CODE/",
-    },
-    {
-        "name": "--story",
-        "label": "Story Link",
-        "type": "text",
-        "placeholder": "e.g., https://www.instagram.com/stories/USERNAME/PK/",
-    },
-    {
-        "name": "--input",
-        "label": "Input File (URLs)",
-        "type": "text",
-        "placeholder": "e.g., urls.txt (file with one URL per line)",
-    },
-    {
-        "name": "--output",
-        "label": "Output Directory",
-        "type": "text",
-        "default": "downloads",
-        "placeholder": "e.g., downloads",
-    },
-    {
-        "name": "--login",
-        "label": "Login Session ID",
-        "type": "text",
-        "placeholder": "Your Instagram session ID",
-    },
-    {
-        "name": "--collection",
-        "label": "Collection Name",
-        "type": "text",
-        "placeholder": "Name of a saved collection",
-    },
-    {
-        "name": "--unsave",
-        "label": "Unsave Media After Download",
-        "type": "checkbox",
-    },
-    {
-        "name": "--download_links",
-        "label": "Download Links to File",
-        "type": "text",
-        "placeholder": "e.g., links.txt",
-    },
-    {
-        "name": "--log_level",
-        "label": "Logging Level",
-        "type": "select",
-        "options": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
-        "default": "INFO",
-    },
+        "name": ",".join(a.option_strings),
+        "dest": a.dest,
+        "label": a.help,
+        "type": arg_type_map.get(type(a)),
+        "options": a.choices,
+        "placeholder": "" if a.default is None else "e.g.," + f"{a.default}",
+        "default": a.default,
+    }
+    for a in parser._actions
+    if not isinstance(a, argparse._HelpAction)
 ]
 
 # calc(100% - 20px)
@@ -107,23 +69,23 @@ HTML_TEMPLATE = """
     <form method="post" action="/run">
         {% for arg in script_arguments %}
             <div class="input-group">
-                <label for="{{ arg.name }}">{{ arg.label }}:</label>
-                {% if arg.type == 'text' %}
-                    <input class="user-input" type="search" id="{{ arg.name }}" name="{{ arg.name }}"
-                           value="{{ request.form.get(arg.name, arg.default if arg.default is not none else '') }}" 
-                           placeholder="{{ arg.placeholder or '' }}">
-                {% elif arg.type == 'checkbox' %}
-                    <input type="checkbox" id="{{ arg.name }}" name="{{ arg.name }}" 
-                           {% if request.form.get(arg.name) == 'on' or (arg.default and request.form.get(arg.name) is none) %}checked{% endif %}>
-                {% elif arg.type == 'select' %}
-                    <select id="{{ arg.name }}" name="{{ arg.name }}">
+                <label for="{{ arg.dest }}">{{ arg.label }}:</label>
+                {% if arg.options is not none %}
+                    <select id="{{ arg.dest }}" name="{{ arg.dest }}">
                         {% for option in arg.options %}
                             <option value="{{ option }}" 
-                                    {% if request.form.get(arg.name, arg.default) == option %}selected{% endif %}>
+                                    {% if request.form.get(arg.dest, arg.default) == option %}selected{% endif %}>
                                 {{ option }}
                             </option>
                         {% endfor %}
                     </select>
+                {% elif arg.type == 'checkbox' %}
+                    <input type="checkbox" id="{{ arg.dest }}" name="{{ arg.dest }}" 
+                           {% if request.form.get(arg.dest) == 'on' or (arg.default and request.form.get(arg.dest) is none) %}checked{% endif %}>
+                {% elif arg.type == 'text' %}
+                    <input class="user-input" type="search" id="{{ arg.dest}}" name="{{ arg.dest }}"
+                           value="{{ request.form.get(arg.dest, arg.default if arg.default is not none else '') }}" 
+                           placeholder="{{ arg.placeholder or '' }}">
                 {% endif %}
             </div>
         {% endfor %}
@@ -167,27 +129,33 @@ def run_command():
 
     try:
         for arg_def in SCRIPT_ARGUMENTS:
-            arg_name = arg_def["name"]
+            arg_dest = arg_def["dest"]
             arg_type = arg_def["type"]
-            form_value = request.form.get(arg_name)
+            form_value = request.form.get(arg_dest)
+            if form_value == "" or form_value is None:
+                continue
+            final_command_args.append("--" + arg_dest)
+            if arg_type == "text":
+                final_command_args.append(form_value)
 
-            if arg_type == "search":
-                if form_value:
-                    final_command_args.append(arg_name)
-                    final_command_args.append(form_value)
-            elif arg_type == "checkbox":
-                if form_value == "on":  # Checkboxes send 'on' if checked
-                    final_command_args.append(arg_name)
-            elif arg_type == "select":
-                if form_value and form_value != arg_def.get("default"):
-                    final_command_args.append(arg_name)
-                    final_command_args.append(form_value)
-                elif (
-                    form_value and arg_name == "--log_level"
-                ):  # Always pass log_level if it has a value
-                    final_command_args.append(arg_name)
-                    final_command_args.append(form_value)
+            # if arg_type == "search":
+            #     if form_value:
+            #         final_command_args.append(arg_name)
+            #         final_command_args.append(form_value)
+            # elif arg_type == "checkbox":
+            #     if form_value == "on":  # Checkboxes send 'on' if checked
+            #         final_command_args.append(arg_name)
+            # elif arg_type == "select":
+            #     if form_value and form_value != arg_def.get("default"):
+            #         final_command_args.append(arg_name)
+            #         final_command_args.append(form_value)
+            #     elif (
+            #         form_value and arg_name == "--log_level"
+            #     ):  # Always pass log_level if it has a value
+            #         final_command_args.append(arg_name)
+            #         final_command_args.append(form_value)
 
+        logger.error(final_command_args)
         result = subprocess.run(
             final_command_args, capture_output=True, text=True, check=False
         )
