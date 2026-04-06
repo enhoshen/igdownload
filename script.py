@@ -25,6 +25,52 @@ class MediaType(Enum):
     VIDEO = 2
 
 
+# Define custom exception for clarity
+class AlbumNotDownload(Exception):
+    """Custom exception for un-downloadable album media types."""
+
+    pass
+
+
+# Helper function to download a single media item (photo or video)
+def download_resource_item(
+    client: instagrapi.Client, item, code: str, folder: str, error_file
+):
+    """Downloads a single media item (photo or video) and its thumbnail."""
+    # Determine the base filename. 'item' can be 'media' object or an item from 'media.resources'.
+    filename_base = f"{item.user.username}-{code}-{item.pk}"
+    try:
+        if item.media_type == MediaType.PHOTO.value:
+            # In original code, for single photo, it downloads thumbnail_url to filename.
+            # For album photo, it downloads thumbnail_url to resource_filename.
+            # Replicating this behavior.
+            client.photo_download_by_url(
+                item.thumbnail_url, filename_base, folder
+            )
+        elif item.media_type == MediaType.VIDEO.value:
+            # Download thumbnail for video
+            client.photo_download_by_url(
+                item.thumbnail_url, filename_base + "-thumb", folder
+            )
+            # Download video
+            client.video_download_by_url(item.video_url, filename_base, folder)
+        else:
+            # Log and report unsupported media types if any
+            error_message = f'Media type "{item.media_type}" unknown for item {item.pk} (code={code})'
+            logger.warning(error_message)
+            error_file.write(
+                f"Unsupported media: {error_message} in folder {folder}"
+            )
+            error_file.flush()
+    except Exception as e:
+        error_message = f"Error downloading item {item.pk} from {item.user.username} (code={code}): {e}"
+        logger.error(error_message)
+        error_file.write(
+            f"Download Error: {error_message} for URL {item.url if hasattr(item, 'url') else 'N/A'}"
+        )
+        error_file.flush()
+
+
 def parse_story(url: str, client: instagrapi.Client, folder: str):
     pk = client.story_pk_from_url(url)
     info = client.story_info(story_pk=pk)
@@ -36,60 +82,73 @@ def parse_story(url: str, client: instagrapi.Client, folder: str):
 
 
 def parse_url(
-    url: str, client: instagrapi.Client, folder: str, sub_folder: bool = False
+    url: str,
+    client: instagrapi.Client,
+    folder: str,
+    error_file,
+    sub_folder: bool = False,
 ):
-    error_url = []
+    """Parses a URL and downloads the corresponding Instagram media."""
     url = url.strip()  # Remove leading/trailing whitespace
     code_match = re.search(r"/p/(.*)/", url)
     if code_match is not None:
         code = code_match[1]
         try:
+            target_folder = folder
             if sub_folder:
-                folder = str(Path(folder).joinpath(code))
-                os.makedirs(name=folder, exist_ok=True)
+                target_folder = str(Path(folder).joinpath(code))
+                os.makedirs(name=target_folder, exist_ok=True)
+
             pk = client.media_pk_from_code(code=code)
             media = client.media_info(media_pk=pk)
-            filename = f"{media.user.username}-{code}-{media.pk}"
-            if media.media_type == MediaType.VIDEO.value:
-                client.photo_download_by_url(
-                    media.thumbnail_url, filename + "-thumb", folder
-                )
-                client.video_download_by_url(media.video_url, filename, folder)
-                return
-            if media.media_type == MediaType.PHOTO.value:
-                client.photo_download_by_url(
-                    media.thumbnail_url, filename, folder
+
+            # Use the helper function for downloading
+            if media.media_type == MediaType.VIDEO.value:  # Single Video
+                download_resource_item(
+                    client, media, code, target_folder, error_file
                 )
                 return
-            for resource in media.resources:
-                filename = f"{media.user.username}-{code}-{resource.pk}"
-                if resource.media_type == MediaType.PHOTO.value:
-                    client.photo_download_by_url(
-                        resource.thumbnail_url, filename, folder
+            elif media.media_type == MediaType.PHOTO.value:  # Single Photo
+                download_resource_item(
+                    client, media, code, target_folder, error_file
+                )
+                return
+            elif media.resources:  # Album (check if resources exist)
+                for resource in media.resources:
+                    download_resource_item(
+                        client, resource, code, target_folder, error_file
                     )
-                elif resource.media_type == MediaType.VIDEO.value:
-                    client.photo_download_by_url(
-                        resource.thumbnail_url, filename + "-thumb", folder
-                    )
-                    client.video_download_by_url(
-                        resource.video_url, filename, folder
-                    )
-                else:
-                    raise AlbumNotDownload(
-                        'Media type "{resource.media_type}" unknown for album (resource={resource.pk})'
-                    )
+            else:
+                # Handle cases where media.type is not photo/video and no resources are found.
+                error_message = f"Unsupported media type ({media.media_type}) or no resources found for post {code} at {url}"
+                logger.warning(error_message)
+                error_file.write(f"Unsupported Media: {error_message}")
+                error_file.flush()
+
         except instagrapi.exceptions.LoginRequired:
-            post = instaloader.Post.from_shortcode(
-                context=L.context, shortcode=code
+            logger.warning(
+                f"Login required for {url}, attempting download with Instaloader."
             )
-            L.download_post(post=post, target=code)
-            logger.info(f"Downloaded successfully from {url}")
+            try:
+                post = instaloader.Post.from_shortcode(
+                    context=L.context, shortcode=code
+                )
+                L.download_post(post=post, target=code)
+                logger.info(
+                    f"Downloaded successfully (Instaloader fallback) from {url}"
+                )
+            except Exception as ie:
+                error_message = f"Instaloader fallback failed for {url}: {ie}"
+                logger.error(error_message)
+                error_file.write(f"Instaloader Fallback Error: {error_message}")
+                error_file.flush()
 
         except Exception as e:
-            logger.error(f"Error downloading from {url}: {e}")
-            error_url.append(url)
-            error.write(url + "\n")
-            error.flush()
+            # Catch-all for other exceptions during instagrapi processing
+            error_message = f"Error processing {url}: {e}"
+            logger.error(error_message)
+            error_file.write(f"General Error: {error_message}")
+            error_file.flush()
 
 
 if __name__ == "__main__":
@@ -148,9 +207,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
     logger.setLevel(args.log_level)
 
-    # L.dirname_pattern = f"{args.output}/{{target}}"
-    L.dirname_pattern = f"{args.output}"
-    L.filename_pattern = f"{{profile}}-{{target}}-{{mediaid}}"
+    # Configure instaloader patterns
+    L.dirname_pattern = (
+        f"{args.output}"  # This sets the base directory for instaloader
+    )
+    L.filename_pattern = (
+        f"{{profile}}-{{target}}-{{mediaid}}"  # This is the filename format
+    )
 
     client = instagrapi.Client()
     client.set_user_agent(
@@ -175,17 +238,29 @@ if __name__ == "__main__":
     if args.collection:
         collection_pk = client.collection_pk_by_name(args.collection)
 
-    if args.url:
-        parse_url(url=args.url, client=client, folder=args.output)
-
-    if args.story:
-        parse_story(url=args.story, client=client, folder=args.output)
-
+    # Use 'with open' for error file handling consistently
     with open("error.txt", "a+") as error:
+        # Handle single URL download within the error file context
+        if args.url:
+            parse_url(
+                url=args.url,
+                client=client,
+                folder=args.output,
+                error_file=error,
+            )
+
+        if args.story:
+            parse_story(url=args.story, client=client, folder=args.output)
+
         if args.input:
             with open(args.input, "r") as inpt:
                 for url in inpt:
-                    parse_url(url=url, client=client, folder=args.output)
+                    parse_url(
+                        url=url,
+                        client=client,
+                        folder=args.output,
+                        error_file=error,
+                    )
 
         if args.download_links:
             assert args.collection
@@ -195,7 +270,7 @@ if __name__ == "__main__":
             )
             with open(args.download_links, "a+") as links:
                 for m in medias:
-                    url = f"https://www.instagram.com/p/{m.code}/\n"
+                    url = f"https://www.instagram.com/p/{m.code}/"
                     links.write(url)
                     if args.unsave:
                         try:
@@ -203,4 +278,15 @@ if __name__ == "__main__":
                                 media_id=m.id, collection_pk=collection_pk
                             )
                         except ValueError:
-                            error.write(url)
+                            error.write(
+                                f"Unsave failed for {url}"
+                            )  # Log unsave error
+                            error.flush()
+
+        # interactive block
+        url = lambda url: parse_url(
+            url=url, client=client, folder=args.output, error_file=error
+        )
+        story = lambda url: parse_story(
+            url=url, client=client, folder=args.output
+        )
