@@ -51,6 +51,9 @@ def parse_url(
             media = client.media_info(media_pk=pk)
             filename = f"{media.user.username}-{code}-{media.pk}"
             if media.media_type == MediaType.VIDEO.value:
+                client.photo_download_by_url(
+                    media.thumbnail_url, filename + "-thumb", folder
+                )
                 client.video_download_by_url(media.video_url, filename, folder)
                 return
             if media.media_type == MediaType.PHOTO.value:
@@ -65,6 +68,9 @@ def parse_url(
                         resource.thumbnail_url, filename, folder
                     )
                 elif resource.media_type == MediaType.VIDEO.value:
+                    client.photo_download_by_url(
+                        resource.thumbnail_url, filename + "-thumb", folder
+                    )
                     client.video_download_by_url(
                         resource.video_url, filename, folder
                     )
