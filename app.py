@@ -74,7 +74,7 @@ SCRIPT_ARGUMENTS = [
     },
 ]
 
-
+# calc(100% - 20px)
 # HTML template string
 HTML_TEMPLATE = """
 <!doctype html>
@@ -86,7 +86,7 @@ HTML_TEMPLATE = """
         h1 { color: #0056b3; }
         form { background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
         label { display: block; margin-bottom: 8px; font-weight: bold; }
-        textarea { width: calc(100% - 20px); padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-family: monospace; font-size: 14px; resize: vertical; }
+        textarea { width: 500px; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-family: monospace; font-size: 14px; resize: vertical; }
         button { padding: 10px 15px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; transition: background-color 0.2s ease; }
         button:hover { background-color: #218838; }
         pre { background-color: #e9ecef; padding: 15px; border: 1px solid #ddd; border-radius: 4px; white-space: pre-wrap; word-wrap: break-word; font-size: 13px; }
@@ -95,7 +95,8 @@ HTML_TEMPLATE = """
         .command-info { font-size: 0.9em; color: #666; margin-bottom: 15px; }
         .input-group { margin-bottom: 15px; }
         .input-group label { margin-bottom: 5px; }
-        .input-group textarea { height: 80px; }
+        .input-group textarea { height: 90px; width: 300px;}
+        .user-input{ width: 500px;}
     </style>
 </head>
 <body>
@@ -108,7 +109,7 @@ HTML_TEMPLATE = """
             <div class="input-group">
                 <label for="{{ arg.name }}">{{ arg.label }}:</label>
                 {% if arg.type == 'text' %}
-                    <input type="text" id="{{ arg.name }}" name="{{ arg.name }}" 
+                    <input class="user-input" type="search" id="{{ arg.name }}" name="{{ arg.name }}"
                            value="{{ request.form.get(arg.name, arg.default if arg.default is not none else '') }}" 
                            placeholder="{{ arg.placeholder or '' }}">
                 {% elif arg.type == 'checkbox' %}
@@ -170,7 +171,7 @@ def run_command():
             arg_type = arg_def["type"]
             form_value = request.form.get(arg_name)
 
-            if arg_type == "text":
+            if arg_type == "search":
                 if form_value:
                     final_command_args.append(arg_name)
                     final_command_args.append(form_value)
