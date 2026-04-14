@@ -1,13 +1,14 @@
 import argparse
 import os
 import re
-from instagrapi.types import Media
-
-import instaloader
 import logging
-import instagrapi
+from typing import Union
 from enum import Enum
 from pathlib import Path
+
+import instaloader
+import instagrapi
+from instagrapi.types import Media, Resource
 
 logger = logging.getLogger(__name__)
 
@@ -34,28 +35,27 @@ class AlbumNotDownload(Exception):
 
 # Helper function to download a single media item (photo or video)
 def download_resource_item(
-    client: instagrapi.Client, item, code: str, folder: str, error_file
+    client: instagrapi.Client,
+    item: Union[Media, Resource],
+    code: str,
+    folder: str,
+    error_file,
 ):
     """Downloads a single media item (photo or video) and its thumbnail."""
     # Determine the base filename. 'item' can be 'media' object or an item from 'media.resources'.
     filename_base = f"{item.user.username}-{code}-{item.pk}"
     try:
         if item.media_type == MediaType.PHOTO.value:
-            # In original code, for single photo, it downloads thumbnail_url to filename.
-            # For album photo, it downloads thumbnail_url to resource_filename.
-            # Replicating this behavior.
             client.photo_download_by_url(
                 item.thumbnail_url, filename_base, folder
             )
         elif item.media_type == MediaType.VIDEO.value:
-            # Download thumbnail for video
+            # video thumbnail
             client.photo_download_by_url(
                 item.thumbnail_url, filename_base + "-thumb", folder
             )
-            # Download video
             client.video_download_by_url(item.video_url, filename_base, folder)
         else:
-            # Log and report unsupported media types if any
             error_message = f'Media type "{item.media_type}" unknown for item {item.pk} (code={code})'
             logger.warning(error_message)
             error_file.write(
@@ -89,7 +89,7 @@ def parse_url(
     sub_folder: bool = False,
 ) -> bool:
     """Parses a URL and downloads the corresponding Instagram media."""
-    url = url.strip()  # Remove leading/trailing whitespace
+    url = url.strip()
     code_match = re.search(r"/p/(.*)/", url)
     if code_match is not None:
         code = code_match[1]
@@ -102,13 +102,12 @@ def parse_url(
             pk = client.media_pk_from_code(code=code)
             media = client.media_info(media_pk=pk)
 
-            # Use the helper function for downloading
-            if media.media_type == MediaType.VIDEO.value:  # Single Video
+            if media.media_type == MediaType.VIDEO.value:
                 download_resource_item(
                     client, media, code, target_folder, error_file
                 )
                 return
-            elif media.media_type == MediaType.PHOTO.value:  # Single Photo
+            elif media.media_type == MediaType.PHOTO.value:
                 download_resource_item(
                     client, media, code, target_folder, error_file
                 )
@@ -119,7 +118,6 @@ def parse_url(
                         client, resource, code, target_folder, error_file
                     )
             else:
-                # Handle cases where media.type is not photo/video and no resources are found.
                 error_message = f"Unsupported media type ({media.media_type}) or no resources found for post {code} at {url}"
                 logger.warning(error_message)
                 error_file.write(f"Unsupported Media: {error_message}")
@@ -219,16 +217,13 @@ if __name__ == "__main__":
     logger.setLevel(args.log_level)
 
     # Configure instaloader patterns
-    L.dirname_pattern = (
-        f"{args.output}"  # This sets the base directory for instaloader
-    )
-    L.filename_pattern = (
-        f"{{profile}}-{{target}}-{{mediaid}}"  # This is the filename format
-    )
+    L.dirname_pattern = f"{args.output}"
+    L.filename_pattern = f"{{profile}}-{{target}}-{{mediaid}}"
 
     client = instagrapi.Client()
     client.set_user_agent(
         "Instagram 410.0.0.0.96 Android (33/13; 480dpi; 1080x2400; xiaomi; M2007J20CG; surya; qcom; en_US; 641123490)"
+        # "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
     )
     if args.login:
         try:
@@ -249,9 +244,7 @@ if __name__ == "__main__":
     if args.collection:
         collection_pk = client.collection_pk_by_name(args.collection)
 
-    # Use 'with open' for error file handling consistently
     with open("error.txt", "a+") as error:
-        # Handle single URL download within the error file context
         if args.url:
             parse_url(
                 url=args.url,
