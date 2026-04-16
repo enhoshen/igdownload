@@ -15,6 +15,11 @@ logger = logging.getLogger(__name__)
 # COMMAND_TO_RUN = [sys.executable, "script.py"]
 COMMAND_TO_RUN = ["python3", "script.py"]
 
+# UI Configuration
+UI_CONFIG = {
+    "input_row_max_width": "500px",
+}
+
 # Define the arguments that script.py's argparse parser will accept.
 # This structure will be used to dynamically generate input fields.
 parser = script.create_parser()
@@ -58,7 +63,7 @@ HTML_TEMPLATE = """
         .input-info { font-size: 0.9em; color: #666; margin-bottom: 15px; }
         .input-group { margin-bottom: 15px; }
         .input-group label { margin-bottom: 5px; }
-        .input-row { display: flex; align-items: center; gap: 10px; max-width: 500px; }
+        .input-row { display: flex; align-items: center; gap: 10px; max-width: {{ ui.input_row_max_width }}; }
         .user-input { flex-grow: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
         select, input[type="checkbox"] { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
         .btn-run { width: 40px; height: 40px; padding: 0; }
@@ -121,6 +126,7 @@ def index():
         HTML_TEMPLATE,
         command=COMMAND_TO_RUN,
         script_arguments=SCRIPT_ARGUMENTS,
+        ui=UI_CONFIG,
         output=None,
         error=None,
     )
@@ -180,6 +186,7 @@ def run_command():
         HTML_TEMPLATE,
         command=COMMAND_TO_RUN,
         script_arguments=SCRIPT_ARGUMENTS,
+        ui=UI_CONFIG,
         output=output,
         error=error,
     )

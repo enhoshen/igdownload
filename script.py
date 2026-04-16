@@ -202,6 +202,12 @@ def create_parser():
         help="Download media links to a file",
     )
     parser.add_argument(
+        "--following",
+        default=None,
+        action="store_true",
+        help="Download following account to following.txt",
+    )
+    parser.add_argument(
         "--log_level",
         dest="log_level",
         default="INFO",
@@ -209,6 +215,14 @@ def create_parser():
         help="Set the logging level",
     )
     return parser
+
+
+def write_following(client: instagrapi.Client):
+    user_id = client.user_id
+    f = client.user_following(user_id=user_id, use_cache=False, amount=0)
+    with open("following.txt", "w") as file:
+        for k, v in f.items():
+            file.write(f"{v.username}, {v.full_name}, {v.pk}\n")
 
 
 if __name__ == "__main__":
@@ -286,6 +300,9 @@ if __name__ == "__main__":
                                 f"Unsave failed for {url}"
                             )  # Log unsave error
                             error.flush()
+
+        if args.following:
+            write_following(client=client)
 
         # interactive block
         url = lambda url: parse_url(
