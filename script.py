@@ -33,9 +33,15 @@ class AlbumNotDownload(Exception):
     pass
 
 
+# import debugpy
+#
+# debugpy.breakpoint()
+
+
 # Helper function to download a single media item (photo or video)
 def download_resource_item(
     client: instagrapi.Client,
+    username: str,
     item: Union[Media, Resource],
     code: str,
     folder: str,
@@ -43,30 +49,34 @@ def download_resource_item(
 ):
     """Downloads a single media item (photo or video) and its thumbnail."""
     # Determine the base filename. 'item' can be 'media' object or an item from 'media.resources'.
-    filename_base = f"{item.user.username}-{code}-{item.pk}"
+    filename_base = f"{username}-{code}-{item.pk}"
     try:
         if item.media_type == MediaType.PHOTO.value:
             client.photo_download_by_url(
-                item.thumbnail_url, filename_base, folder
+                url=item.thumbnail_url, filename=filename_base, folder=folder
             )
         elif item.media_type == MediaType.VIDEO.value:
             # video thumbnail
             client.photo_download_by_url(
-                item.thumbnail_url, filename_base + "-thumb", folder
+                url=item.thumbnail_url,
+                filename=filename_base + "-thumb",
+                folder=folder,
             )
-            client.video_download_by_url(item.video_url, filename_base, folder)
+            client.video_download_by_url(
+                url=item.video_url, filename=filename_base, folder=folder
+            )
         else:
             error_message = f'Media type "{item.media_type}" unknown for item {item.pk} (code={code})'
             logger.warning(error_message)
             error_file.write(
-                f"Unsupported media: {error_message} in folder {folder}"
+                f"Unsupported media: {error_message} in folder {folder}\n"
             )
             error_file.flush()
     except Exception as e:
-        error_message = f"Error downloading item {item.pk} from {item.user.username} (code={code}): {e}"
+        error_message = f"Error downloading item {item.pk} from {username} (code={code}): {e}"
         logger.error(error_message)
         error_file.write(
-            f"Download Error: {error_message} for URL {item.url if hasattr(item, 'url') else 'N/A'}"
+            f"Download Error: {error_message} for URL {item.url if hasattr(item, 'url') else 'N/A'}\n"
         )
         error_file.flush()
 
@@ -104,23 +114,38 @@ def parse_url(
 
             if media.media_type == MediaType.VIDEO.value:
                 download_resource_item(
-                    client, media, code, target_folder, error_file
+                    client=client,
+                    username=media.user.username,
+                    item=media,
+                    code=code,
+                    folder=target_folder,
+                    error_file=error_file,
                 )
                 return
             elif media.media_type == MediaType.PHOTO.value:
                 download_resource_item(
-                    client, media, code, target_folder, error_file
+                    client=client,
+                    username=media.user.username,
+                    item=media,
+                    code=code,
+                    folder=target_folder,
+                    error_file=error_file,
                 )
                 return
             elif media.resources:  # Album (check if resources exist)
                 for resource in media.resources:
                     download_resource_item(
-                        client, resource, code, target_folder, error_file
+                        client=client,
+                        username=media.user.username,
+                        item=resource,
+                        code=code,
+                        folder=target_folder,
+                        error_file=error_file,
                     )
             else:
                 error_message = f"Unsupported media type ({media.media_type}) or no resources found for post {code} at {url}"
                 logger.warning(error_message)
-                error_file.write(f"Unsupported Media: {error_message}")
+                error_file.write(f"Unsupported Media: {error_message}\n")
                 error_file.flush()
                 return True
 
@@ -137,9 +162,11 @@ def parse_url(
                     f"Downloaded successfully (Instaloader fallback) from {url}"
                 )
             except Exception as ie:
-                error_message = f"Instaloader fallback failed for {url}: {ie}"
+                error_message = f"{url}: Instaloader fallback failed with {ie}"
                 logger.error(error_message)
-                error_file.write(f"Instaloader Fallback Error: {error_message}")
+                error_file.write(
+                    f"Instaloader Fallback Error: {error_message}\n"
+                )
                 error_file.flush()
                 return True
 
@@ -147,7 +174,7 @@ def parse_url(
             # Catch-all for other exceptions during instagrapi processing
             error_message = f"Error processing {url}: {e}"
             logger.error(error_message)
-            error_file.write(f"General Error: {error_message}")
+            error_file.write(f"General Error: {error_message}\n")
             error_file.flush()
             return True
         return False
@@ -289,7 +316,7 @@ if __name__ == "__main__":
             with open(args.download_links, "a+") as links:
                 for m in medias:
                     url = f"https://www.instagram.com/p/{m.code}/"
-                    links.write(url)
+                    links.write(url + "\n")
                     if args.unsave:
                         try:
                             client.media_unsave(
@@ -297,7 +324,7 @@ if __name__ == "__main__":
                             )
                         except ValueError:
                             error.write(
-                                f"Unsave failed for {url}"
+                                f"Unsave failed for {url}\n"
                             )  # Log unsave error
                             error.flush()
 
