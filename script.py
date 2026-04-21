@@ -1,7 +1,9 @@
 import argparse
 import os
+from os.path import basename
 import re
 import logging
+import sys  # Added for sys.exit
 from typing import Union
 from enum import Enum
 from pathlib import Path
@@ -32,6 +34,9 @@ class AlbumNotDownload(Exception):
 
     pass
 
+
+# "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
+USER_AGENT = "Instagram 410.0.0.0.96 Android (33/13; 480dpi; 1080x2400; xiaomi; M2007J20CG; surya; qcom; en_US; 641123490)"
 
 # import debugpy
 #
@@ -226,7 +231,12 @@ def create_parser():
     parser.add_argument(
         "--download_links",
         default=None,
-        help="Download media links to a file",
+        help="The file name to store media links to be downloaded",
+    )
+    parser.add_argument(
+        "--link_markdown",
+        default=None,
+        help="The markdown file name to download collection links and thumbnail to",
     )
     parser.add_argument(
         "--following",
@@ -252,6 +262,68 @@ def write_following(client: instagrapi.Client):
             file.write(f"{v.username}, {v.full_name}, {v.pk}\n")
 
 
+def download_collection_links(
+    client: instagrapi.Client,
+    collection_pk: str,
+    folder: str,
+    output_file: str,
+    error_file,
+    markdown: bool = False,
+    unsave: bool = False,
+):
+    """
+    Downloads media links from a collection and optionally writes them to a
+    markdown file with thumbnails.
+    """
+    anonymous_client = instagrapi.Client()
+    anonymous_client.set_user_agent(USER_AGENT)
+    medias = client.collection_medias(collection_pk=collection_pk, amount=0)
+
+    images_dir_name = "images"
+    images_dir_path = Path(folder).joinpath(images_dir_name)
+    os.makedirs(images_dir_path, exist_ok=True)
+    output_file = Path(folder).joinpath(output_file)
+
+    with open(output_file, "a+") as links_file:
+        for m in medias:
+            url = f"https://www.instagram.com/p/{m.code}/"
+
+            if markdown:
+                try:
+                    thumbnail_filename_base = (
+                        f"{m.user.username}-{m.code}-{m.pk}"
+                    )
+                    thumbnail_path = anonymous_client.photo_download_by_url(
+                        url=m.thumbnail_url,
+                        filename=thumbnail_filename_base,
+                        folder=images_dir_path,
+                    )
+                    # image link item uses relative path
+                    thumbnail_path = Path(images_dir_name).joinpath(
+                        Path(thumbnail_path).name
+                    )
+                    links_file.write(f"- [{m.caption_text}]({url})\n")
+                    links_file.write(f"  ![]({thumbnail_path})\n")
+                    links_file.flush()
+                except Exception as e:
+                    error_message = f"Error processing markdown for {url}: {e}"
+                    logger.error(error_message)
+                    error_file.write(f"Markdown Error: {error_message}\n")
+                    error_file.flush()
+            else:
+                links_file.write(url + "\n")
+                links_file.flush()
+
+            if unsave:
+                try:
+                    client.media_unsave(
+                        media_id=m.id, collection_pk=collection_pk
+                    )
+                except ValueError:
+                    error.write(f"Unsave failed for {url}\n")
+                    error.flush()
+
+
 if __name__ == "__main__":
     parser = create_parser()
     args = parser.parse_args()
@@ -259,31 +331,45 @@ if __name__ == "__main__":
 
     # Configure instaloader patterns
     L.dirname_pattern = f"{args.output}"
-    L.filename_pattern = f"{{profile}}-{{target}}-{{mediaid}}"
+    L.filename_pattern = "{profile}-{target}-{mediaid}"
 
     client = instagrapi.Client()
-    client.set_user_agent(
-        "Instagram 410.0.0.0.96 Android (33/13; 480dpi; 1080x2400; xiaomi; M2007J20CG; surya; qcom; en_US; 641123490)"
-        # "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
-    )
+    client.set_user_agent(USER_AGENT)
     if args.login:
         try:
             client.login_by_sessionid(args.login)
-        except:
+        except Exception as e:  # Catch specific exception for better handling
+            logger.warning(
+                f"Login by sessionid failed: {e}. Trying interactive/manual login."
+            )
             try:
                 sessionid = input("sessionid:")
                 client.login_by_sessionid(sessionid=sessionid)
-            except:
-                name = input("username:")
-                passwd = input("password:")
-                vcode = input("verification code:")
-                client.login(
-                    username=name, password=passwd, verification_code=vcode
+            except Exception as e_session:
+                logger.warning(
+                    f"Login by sessionid (input) failed: {e_session}. Trying username/password."
                 )
+                try:
+                    name = input("username:")
+                    passwd = input("password:")
+                    vcode = input("verification code:")
+                    client.login(
+                        username=name, password=passwd, verification_code=vcode
+                    )
+                except Exception as e_manual:
+                    logger.error(f"Manual login failed: {e_manual}")
+                    # Decide if you want to exit or proceed without login
+                    # sys.exit(1) # Optionally exit if login is critical
+
         client.delay_range = [1, 3]
 
+    collection_pk = None
     if args.collection:
-        collection_pk = client.collection_pk_by_name(args.collection)
+        try:
+            collection_pk = client.collection_pk_by_name(args.collection)
+        except Exception as e:
+            logger.error(f"Could not find collection '{args.collection}': {e}")
+            sys.exit(1)  # Exit if collection is not found and required
 
     with open("error.txt", "a+") as error:
         if args.url:
@@ -298,43 +384,57 @@ if __name__ == "__main__":
             parse_story(url=args.story, client=client, folder=args.output)
 
         if args.input:
-            with open(args.input, "r") as inpt:
-                for url in inpt:
-                    parse_url(
-                        url=url,
-                        client=client,
-                        folder=args.output,
-                        error_file=error,
-                    )
+            try:
+                with open(args.input, "r") as inpt:
+                    for url in inpt:
+                        parse_url(
+                            url=url.strip(),  # strip whitespace from URL
+                            client=client,
+                            folder=args.output,
+                            error_file=error,
+                        )
+            except FileNotFoundError:
+                logger.error(f"Input file not found: {args.input}")
+                sys.exit(1)
 
-        if args.download_links:
-            assert args.collection
-            collection_pk = client.collection_pk_by_name(args.collection)
-            medias = client.collection_medias(
-                collection_pk=collection_pk, amount=0
-            )
-            with open(args.download_links, "a+") as links:
-                for m in medias:
-                    url = f"https://www.instagram.com/p/{m.code}/"
-                    links.write(url + "\n")
-                    if args.unsave:
-                        try:
-                            client.media_unsave(
-                                media_id=m.id, collection_pk=collection_pk
-                            )
-                        except ValueError:
-                            error.write(
-                                f"Unsave failed for {url}\n"
-                            )  # Log unsave error
-                            error.flush()
+        if args.download_links or args.link_markdown:
+            if not args.collection or not collection_pk:
+                logger.error(
+                    "Collection name is required and must be valid for --download_links or --link_markdown."
+                )
+                sys.exit(1)
+
+            # If --download_links is specified, write to that file.
+            if args.download_links:
+                download_collection_links(
+                    client=client,
+                    collection_pk=collection_pk,
+                    folder=args.output,
+                    output_file=args.download_links,
+                    error_file=error,
+                    unsave=args.unsave,
+                )
+
+            # If --link_markdown is specified, generate markdown with thumbnails.
+            # This can be used in conjunction with --download_links or independently.
+            if args.link_markdown:
+                download_collection_links(
+                    client=client,
+                    collection_pk=collection_pk,
+                    folder=args.output,
+                    output_file=args.link_markdown,  # Use link_markdown for the output file name if specified
+                    error_file=error,
+                    markdown=True,  # Pass link_markdown for markdown generation
+                    unsave=args.unsave,
+                )
 
         if args.following:
             write_following(client=client)
 
         # interactive block
         url = lambda url: parse_url(
-            url=url, client=client, folder=args.output, error_file=error
+            url=url.strip(), client=client, folder=args.output, error_file=error
         )
         story = lambda url: parse_story(
-            url=url, client=client, folder=args.output
+            url=url.strip(), client=client, folder=args.output
         )
