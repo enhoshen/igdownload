@@ -86,14 +86,59 @@ def download_resource_item(
         error_file.flush()
 
 
-def parse_story(url: str, client: instagrapi.Client, folder: str):
-    pk = client.story_pk_from_url(url)
-    info = client.story_info(story_pk=pk)
-    filename = f"{info.user.username}-{pk}"
+def download_thumbnail(
+    media: Media,
+    client: instagrapi.Client,
+    filename: str,
+    folder: str,
+) -> str:
+    if media.thumbnail_url is None:
+        target = media.resources[0].thumbnail_url
+    else:
+        target = media.thumbnail_url
+    path = client.photo_download_by_url(
+        url=target,
+        filename=filename,
+        folder=folder,
+    )
+    return path
+
+
+def media_unsave(
+    client: instagrapi.Client,
+    media: Media,
+    collection_pk: str,
+):
     try:
-        client.story_download(story_pk=pk, filename=filename, folder=folder)
-    except Exception as e:
-        logger.error(f"Error downloading from {url}: {e}")
+        collection_pk = int(collection_pk)
+    except ValueError:
+        # for All posts, collection_pk is a string
+        collection_pk = None
+
+    client.media_unsave(media_id=media.id, collection_pk=collection_pk)
+
+
+def parse_story(url: str, client: instagrapi.Client, folder: str):
+    pks = []
+    try:
+        pk = client.story_pk_from_url(url)
+        pks.append(pk)
+    except IndexError:
+        url = url.lstrip("https://")
+        url = url.rstrip("/")
+        _, _, user = url.split("/")
+        user = client.user_id_from_username(username=user)
+        stories = client.user_stories(user_id=user)
+        for s in stories:
+            pks.append(s.pk)
+
+    for pk in pks:
+        info = client.story_info(story_pk=pk)
+        filename = f"{info.user.username}-{pk}"
+        try:
+            client.story_download(story_pk=pk, filename=filename, folder=folder)
+        except Exception as e:
+            logger.error(f"Error downloading from {url}: {e}")
 
 
 def parse_url(
@@ -287,14 +332,15 @@ def download_collection_links(
     with open(output_file, "a+") as links_file:
         for m in medias:
             url = f"https://www.instagram.com/p/{m.code}/"
-
-            if markdown:
-                try:
+            logger.info(f"Processing link {url}")
+            try:
+                if markdown:
                     thumbnail_filename_base = (
                         f"{m.user.username}-{m.code}-{m.pk}"
                     )
-                    thumbnail_path = anonymous_client.photo_download_by_url(
-                        url=m.thumbnail_url,
+                    thumbnail_path = download_thumbnail(
+                        media=m,
+                        client=anonymous_client,
                         filename=thumbnail_filename_base,
                         folder=images_dir_path,
                     )
@@ -302,26 +348,23 @@ def download_collection_links(
                     thumbnail_path = Path(images_dir_name).joinpath(
                         Path(thumbnail_path).name
                     )
-                    links_file.write(f"- [{m.caption_text}]({url})\n")
+                    links_file.write(f"- [{m.title}]({url})\n")
                     links_file.write(f"  ![]({thumbnail_path})\n")
                     links_file.flush()
-                except Exception as e:
-                    error_message = f"Error processing markdown for {url}: {e}"
-                    logger.error(error_message)
-                    error_file.write(f"Markdown Error: {error_message}\n")
-                    error_file.flush()
-            else:
-                links_file.write(url + "\n")
-                links_file.flush()
+                else:
+                    links_file.write(url + "\n")
+                    links_file.flush()
 
-            if unsave:
-                try:
-                    client.media_unsave(
-                        media_id=m.id, collection_pk=collection_pk
+                if unsave:
+                    media_unsave(
+                        client=client, media=m, collection_pk=collection_pk
                     )
-                except ValueError:
-                    error.write(f"Unsave failed for {url}\n")
-                    error.flush()
+            except Exception as e:
+                error_message = f"Error processing markdown for {url}: {e}"
+                logger.error(error_message)
+                error_file.write(f"Markdown Error: {error_message}\n")
+                error_file.flush()
+                continue
 
 
 if __name__ == "__main__":

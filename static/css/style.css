@@ -1,0 +1,20 @@
+body { font-family: sans-serif; margin: 20px; background-color: #f9f9f9; color: #333;}
+h1 { color: #0056b3; }
+form { background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
+label { display: block; margin-bottom: 8px; font-weight: bold; }
+textarea { width: 500px; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-family: monospace; font-size: 14px; resize: vertical; }
+button { padding: 10px 15px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; transition: background-color 0.2s ease; display: flex; align-items: center; justify-content: center; }
+button:hover { background-color: #218838; }
+pre { background-color: #e9ecef; padding: 15px; border: 1px solid #ddd; border-radius: 4px; white-space: pre-wrap; word-wrap: break-word; font-size: 13px; }
+.output-section { margin-top: 20px; }
+.error { color: #dc3545; font-weight: bold; }
+.input-info { font-size: 0.9em; color: #666; margin-bottom: 15px; }
+.input-group { margin-bottom: 15px; }
+.input-group label { margin-bottom: 5px; }
+.input-row { display: flex; align-items: center; gap: 10px; }
+.user-input { flex-grow: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+select, input[type="checkbox"] { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+.btn-run { width: 40px; height: 40px; padding: 0; }
+/* New styles for dynamic command display */
+.dynamic-command-display { margin-top: 15px; margin-bottom: 15px; padding: 10px; background-color: #e9ecef; border: 1px solid #ddd; border-radius: 4px; }
+.dynamic-command-display code { font-family: monospace; font-size: 13px; }

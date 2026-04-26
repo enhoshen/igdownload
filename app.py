@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template_string
+from flask import Flask, request, render_template
 import argparse
 import shlex
 import subprocess
@@ -29,101 +29,23 @@ arg_type_map = {
 }
 SCRIPT_ARGUMENTS = [
     {
-        "name": ",".join(a.option_strings),
+        "name": ", ".join(a.option_strings),
         "dest": a.dest,
         "label": a.help,
         "type": arg_type_map.get(type(a)),
         "options": a.choices,
-        "placeholder": "" if a.default is None else "e.g.," + f"{a.default}",
+        "placeholder": "" if a.default is None else "e.g., " + f"{a.default}",
         "default": a.default,
     }
     for a in parser._actions
     if not isinstance(a, argparse._HelpAction)
 ]
 
-# calc(100% - 20px)
-# HTML template string
-HTML_TEMPLATE = """
-<!doctype html>
-<html>
-<head>
-    <title>Command Runner</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <style>
-        body { font-family: sans-serif; margin: 20px; background-color: #f9f9f9; color: #333;}
-        h1 { color: #0056b3; }
-        form { background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
-        label { display: block; margin-bottom: 8px; font-weight: bold; }
-        textarea { width: 500px; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-family: monospace; font-size: 14px; resize: vertical; }
-        button { padding: 10px 15px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; transition: background-color 0.2s ease; display: flex; align-items: center; justify-content: center; }
-        button:hover { background-color: #218838; }
-        pre { background-color: #e9ecef; padding: 15px; border: 1px solid #ddd; border-radius: 4px; white-space: pre-wrap; word-wrap: break-word; font-size: 13px; }
-        .output-section { margin-top: 20px; }
-        .error { color: #dc3545; font-weight: bold; }
-        .input-info { font-size: 0.9em; color: #666; margin-bottom: 15px; }
-        .input-group { margin-bottom: 15px; }
-        .input-group label { margin-bottom: 5px; }
-        .input-row { display: flex; align-items: center; gap: 10px; max-width: {{ ui.input_row_max_width }}; }
-        .user-input { flex-grow: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
-        select, input[type="checkbox"] { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
-        .btn-run { width: 40px; height: 40px; padding: 0; }
-    </style>
-</head>
-<body>
-    <h1>Command Executor</h1>
-    <div class="command-info">
-        Running command: <code>{{ command }}</code>
-    </div>
-    <form method="post" action="/run">
-        {% for arg in script_arguments %}
-            <div class="input-group">
-                <label for="{{ arg.dest }}">{{ arg.label }}:</label>
-                <div class="input-row">
-                    {% if arg.options is not none %}
-                        <select id="{{ arg.dest }}" name="{{ arg.dest }}">
-                            {% for option in arg.options %}
-                                <option value="{{ option }}" 
-                                        {% if request.form.get(arg.dest, arg.default) == option %}selected{% endif %}>
-                                    {{ option }}
-                                </option>
-                            {% endfor %}
-                        </select>
-                    {% elif arg.type == 'checkbox' %}
-                        <input type="checkbox" id="{{ arg.dest }}" name="{{ arg.dest }}" 
-                               {% if request.form.get(arg.dest) == 'on' or (arg.default and request.form.get(arg.dest) is none) %}checked{% endif %}>
-                    {% elif arg.type == 'text' %}
-                        <input class="user-input" type="search" id="{{ arg.dest}}" name="{{ arg.dest }}"
-                               value="{{ request.form.get(arg.dest, arg.default if arg.default is not none else '') }}" 
-                               placeholder="{{ arg.placeholder or '' }}">
-                    {% endif %}
-                    <button type="submit" class="btn-run" title="Run Command"><i class="fas fa-play"></i></button>
-                </div>
-            </div>
-        {% endfor %}
-        <br>
-    </form>
-
-    {% if output %}
-        <div class="output-section">
-            <h2>Output:</h2>
-            <pre>{{ output }}</pre>
-        </div>
-    {% endif %}
-    {% if error %}
-        <div class="output-section">
-            <h2>Error:</h2>
-            <pre class="error">{{ error }}</pre>
-        </div>
-    {% endif %}
-</body>
-</html>
-"""
-
 
 @app.route("/")
 def index():
-    return render_template_string(
-        HTML_TEMPLATE,
+    return render_template(
+        "index.html",
         command=COMMAND_TO_RUN,
         script_arguments=SCRIPT_ARGUMENTS,
         ui=UI_CONFIG,
@@ -149,23 +71,6 @@ def run_command():
             if arg_type == "text":
                 final_command_args.append(form_value)
 
-            # if arg_type == "search":
-            #     if form_value:
-            #         final_command_args.append(arg_name)
-            #         final_command_args.append(form_value)
-            # elif arg_type == "checkbox":
-            #     if form_value == "on":  # Checkboxes send 'on' if checked
-            #         final_command_args.append(arg_name)
-            # elif arg_type == "select":
-            #     if form_value and form_value != arg_def.get("default"):
-            #         final_command_args.append(arg_name)
-            #         final_command_args.append(form_value)
-            #     elif (
-            #         form_value and arg_name == "--log_level"
-            #     ):  # Always pass log_level if it has a value
-            #         final_command_args.append(arg_name)
-            #         final_command_args.append(form_value)
-
         logger.error(final_command_args)
         result = subprocess.run(
             final_command_args, capture_output=True, text=True, check=False
@@ -182,8 +87,8 @@ def run_command():
     except Exception as e:
         error = f"An unexpected error occurred: {e}"
 
-    return render_template_string(
-        HTML_TEMPLATE,
+    return render_template(
+        "index.html",
         command=COMMAND_TO_RUN,
         script_arguments=SCRIPT_ARGUMENTS,
         ui=UI_CONFIG,
