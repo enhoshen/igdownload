@@ -125,6 +125,7 @@ def parse_story(url: str, client: instagrapi.Client, folder: str):
         pks.append(pk)
     except IndexError:
         url = url.lstrip("https://")
+        url = url.rstrip(" ")
         url = url.rstrip("/")
         _, _, user = url.split("/")
         user = client.user_id_from_username(username=user)
