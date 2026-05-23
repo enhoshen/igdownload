@@ -124,6 +124,7 @@ def parse_story(url: str, client: instagrapi.Client, folder: str):
         pk = client.story_pk_from_url(url)
         pks.append(pk)
     except IndexError:
+        # no story index is given EX: https://www.instagram.com/stories/user/
         url = url.lstrip("https://")
         url = url.rstrip(" ")
         url = url.rstrip("/")
